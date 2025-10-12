@@ -27,14 +27,14 @@ document.addEventListener('DOMContentLoaded', () => {
     for (let row = 0; row < 7; row++) {
       gameState.board[row] = [];
 
-      for (let column = 0; column < 7; column++) {
-        const cellValue = boardLayout[row][column];
-        gameState.board[row][column] = cellValue;
+      for (let col = 0; col < 7; col++) {
+        const cellValue = boardLayout[row][col];
+        gameState.board[row][col] = cellValue;
 
         const cell = document.createElement('div');
         cell.className = 'cell';
         cell.dataset.row = row;
-        cell.dataset.col = column;
+        cell.dataset.col = col;
 
         if (cellValue === 0) {
           cell.classList.add('invalid');
@@ -47,7 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
             cell.appendChild(piece);
           }
 
-          cell.addEventListener('click', () => handleCellClick(row, column));
+          cell.addEventListener('click', () => handleCellClick(row, col));
         }
 
         boardElement.appendChild(cell);
@@ -78,8 +78,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // Se a célula clicada está vazia, por enquanto apenas desseleciona
       if (clickedCellValue === 2) {
+        movePiece(
+          gameState.selectedCell.row,
+          gameState.selectedCell.col,
+          row,
+          col
+        );
         deselectCell();
         return;
       }
@@ -101,6 +106,33 @@ document.addEventListener('DOMContentLoaded', () => {
       cell.classList.remove('selected');
 
       gameState.selectedCell = null;
+    }
+  }
+
+  function movePiece(fromRow, fromCol, toRow, toCol) {
+    gameState.board[fromRow][fromCol] = 2;
+    gameState.board[toRow][toCol] = 1;
+
+    removePieceFromCell(fromRow, fromCol);
+    addPieceToCell(toRow, toCol);
+  }
+
+  function removePieceFromCell(row, col) {
+    const cell = getCellElement(row, col);
+    const piece = cell.querySelector('.piece');
+
+    if (piece) {
+      cell.removeChild(piece);
+    }
+  }
+
+  function addPieceToCell(row, col) {
+    const cell = getCellElement(row, col);
+
+    if (!cell.querySelector('.piece')) {
+      const piece = document.createElement('div');
+      piece.className = 'piece';
+      cell.appendChild(piece);
     }
   }
 
