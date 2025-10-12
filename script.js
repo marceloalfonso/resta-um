@@ -79,12 +79,21 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (clickedCellValue === 2) {
-        movePiece(
+        const canMove = checkValidMove(
           gameState.selectedCell.row,
           gameState.selectedCell.col,
           row,
           col
         );
+
+        if (canMove) {
+          movePiece(
+            gameState.selectedCell.row,
+            gameState.selectedCell.col,
+            row,
+            col
+          );
+        }
         deselectCell();
         return;
       }
@@ -109,11 +118,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  function checkValidMove(fromRow, fromCol, toRow, toCol) {
+    const rowDiff = Math.abs(fromRow - toRow);
+    const colDiff = Math.abs(fromCol - toCol);
+
+    if ((rowDiff === 2 && colDiff === 0) || (rowDiff === 0 && colDiff === 2)) {
+      const middleRow = (fromRow + toRow) / 2;
+      const middleCol = (fromCol + toCol) / 2;
+
+      return gameState.board[middleRow][middleCol] === 1;
+    }
+
+    return false;
+  }
+
   function movePiece(fromRow, fromCol, toRow, toCol) {
+    const middleRow = (fromRow + toRow) / 2;
+    const middleCol = (fromCol + toCol) / 2;
+
     gameState.board[fromRow][fromCol] = 2;
+    gameState.board[middleRow][middleCol] = 2;
     gameState.board[toRow][toCol] = 1;
 
     removePieceFromCell(fromRow, fromCol);
+    removePieceFromCell(middleRow, middleCol);
     addPieceToCell(toRow, toCol);
   }
 
