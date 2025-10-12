@@ -56,6 +56,15 @@ h1 {
   background-color: transparent;
 }
 
+.cell.valid {
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.cell.selected {
+  background-color: #9acd32;
+}
+
 .piece {
   width: 80%;
   height: 80%;
@@ -63,6 +72,11 @@ h1 {
   background-color: #8b4513;
   position: absolute;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease;
+}
+
+.piece:hover {
+  transform: scale(1.05);
 }
 
 .instructions {
