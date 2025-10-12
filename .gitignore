@@ -1,0 +1,8 @@
+.DS_Store
+.env
+
+/docs/enunciado.pdf
+*.mp4
+*.txt
+
+/teste
