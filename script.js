@@ -18,6 +18,19 @@ document.addEventListener('DOMContentLoaded', () => {
   // 2: célula válida sem peça (posição central começa vazia)
 
   const boardElement = document.getElementById('board');
+  const restartButton = document.getElementById('restart-button');
+
+  initGame();
+
+  restartButton.addEventListener('click', initGame);
+
+  function initGame() {
+    boardElement.innerHTML = '';
+    gameState.board = [];
+    gameState.selectedCell = null;
+
+    createBoard();
+  }
 
   function createBoard() {
     boardElement.innerHTML = '';
@@ -169,6 +182,4 @@ document.addEventListener('DOMContentLoaded', () => {
       `.cell[data-row="${row}"][data-col="${col}"]`
     );
   }
-
-  createBoard();
 });

@@ -27,6 +27,27 @@ h1 {
   color: #333;
 }
 
+.game-info {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 20px;
+}
+
+#restart-button {
+  padding: 8px 16px;
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.3s;
+}
+
+#restart-button:hover {
+  background-color: #45a049;
+}
+
 .board {
   width: 100%;
   max-width: 500px;
