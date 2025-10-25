@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const gameState = {
     board: [],
     selectedCell: null,
+    remainingPieces: 32,
   };
 
   const boardLayout = [
@@ -19,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const boardElement = document.getElementById('board');
   const restartButton = document.getElementById('restart-button');
+  const remainingPiecesElement = document.getElementById('remaining-pieces');
 
   initGame();
 
@@ -28,7 +30,9 @@ document.addEventListener('DOMContentLoaded', () => {
     boardElement.innerHTML = '';
     gameState.board = [];
     gameState.selectedCell = null;
+    gameState.remainingPieces = 32;
 
+    updateRemainingPieces();
     createBoard();
   }
 
@@ -156,6 +160,9 @@ document.addEventListener('DOMContentLoaded', () => {
     removePieceFromCell(fromRow, fromCol);
     removePieceFromCell(middleRow, middleCol);
     addPieceToCell(toRow, toCol);
+
+    gameState.remainingPieces--;
+    updateRemainingPieces();
   }
 
   function removePieceFromCell(row, col) {
@@ -181,5 +188,9 @@ document.addEventListener('DOMContentLoaded', () => {
     return document.querySelector(
       `.cell[data-row="${row}"][data-col="${col}"]`
     );
+  }
+
+  function updateRemainingPieces() {
+    remainingPiecesElement.textContent = gameState.remainingPieces;
   }
 });
