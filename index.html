@@ -5,16 +5,72 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Resta um online</title>
     <link rel="stylesheet" href="styles.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎯</text></svg>"
+    />
+    <meta name="theme-color" content="#0f172a" />
   </head>
   <body>
     <div class="container">
       <h1>Resta um</h1>
+
       <div class="game-info">
-        <p>Peças restantes: <span id="remaining-pieces">32</span></p>
-        <button id="restart-button">Reiniciar jogo</button>
+        <div class="pieces-counter">
+          Peças restantes: <span id="remaining-pieces">32</span>
+        </div>
+        <button id="restart-button">
+          <span>🔄 Reiniciar o jogo</span>
+        </button>
       </div>
-      <div id="board" class="board"></div>
+
+      <div class="game-container">
+        <div class="side-panel left-panel">
+          <div class="info-card">
+            <h3>Como jogar</h3>
+            <ul>
+              <li>Clique em uma peça para selecioná-la</li>
+              <li>Clique em um espaço vazio para mover</li>
+              <li>Você deve pular sobre outras peças</li>
+              <li>O objetivo é deixar apenas uma peça no tabuleiro</li>
+            </ul>
+          </div>
+
+          <div class="info-card">
+            <h3>Dicas</h3>
+            <ul>
+              <li>Comece pelas bordas</li>
+              <li>Planeje seus movimentos</li>
+              <li>Use ESC para deselecionar uma peça</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Tabuleiro Central -->
+        <div class="board-wrapper">
+          <div id="board" class="board"></div>
+        </div>
+
+        <!-- Painel Direito -->
+        <div class="side-panel right-panel">
+          <div class="game-stats">
+            <div class="stat-card highlighted">
+              <div class="stat-label">Movimentos</div>
+              <div class="stat-value" id="moves-count">0</div>
+            </div>
+            <div class="stat-card highlighted">
+              <div class="stat-label">Tempo</div>
+              <div class="stat-value" id="game-time">00:00</div>
+            </div>
+            <div class="stat-card highlighted">
+              <div class="stat-label">Melhor</div>
+              <div class="stat-value" id="best-score">--</div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
+
     <script src="script.js"></script>
   </body>
 </html>

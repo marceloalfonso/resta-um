@@ -3,6 +3,11 @@ document.addEventListener('DOMContentLoaded', () => {
     board: [],
     selectedCell: null,
     remainingPieces: 32,
+    movesCount: 0,
+    startTime: null,
+    gameTime: 0,
+    timerInterval: null,
+    isGameActive: false,
   };
 
   const boardLayout = [
@@ -21,19 +26,88 @@ document.addEventListener('DOMContentLoaded', () => {
   const boardElement = document.getElementById('board');
   const restartButton = document.getElementById('restart-button');
   const remainingPiecesElement = document.getElementById('remaining-pieces');
+  const movesCountElement = document.getElementById('moves-count');
+  const gameTimeElement = document.getElementById('game-time');
+  const bestScoreElement = document.getElementById('best-score');
 
   initGame();
 
   restartButton.addEventListener('click', initGame);
 
+  document.addEventListener('keydown', handleKeyPress);
+
+  function handleKeyPress(event) {
+    if (!gameState.isGameActive && gameState.selectedCell === null) return;
+
+    switch (event.key) {
+      case 'Escape':
+        if (gameState.selectedCell) {
+          deselectCell();
+        }
+        break;
+      case 'r':
+      case 'R':
+        if (event.ctrlKey || event.metaKey) {
+          event.preventDefault();
+          initGame();
+        }
+        break;
+    }
+  }
+
+  function playSound(type) {
+    if (navigator.vibrate) {
+      switch (type) {
+        case 'select':
+          navigator.vibrate(50);
+          break;
+        case 'move':
+          navigator.vibrate([100, 50, 100]);
+          break;
+        case 'win':
+          navigator.vibrate([200, 100, 200, 100, 200]);
+          break;
+        case 'error':
+          navigator.vibrate(200);
+          break;
+      }
+    }
+  }
+
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes bounceIn {
+      0% { transform: scale(0.3); opacity: 0; }
+      50% { transform: scale(1.1); opacity: 0.8; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+  `;
+  document.head.appendChild(style);
+
   function initGame() {
+    restartButton.classList.add('loading');
+
     boardElement.innerHTML = '';
     gameState.board = [];
     gameState.selectedCell = null;
     gameState.remainingPieces = 32;
+    gameState.movesCount = 0;
+    gameState.gameTime = 0;
+    gameState.startTime = null;
+    gameState.isGameActive = false;
 
-    updateRemainingPieces();
+    if (gameState.timerInterval) {
+      clearInterval(gameState.timerInterval);
+      gameState.timerInterval = null;
+    }
+
+    updateGameStats();
+    loadBestScore();
     createBoard();
+
+    setTimeout(() => {
+      restartButton.classList.remove('loading');
+    }, 500);
   }
 
   function createBoard() {
@@ -104,6 +178,10 @@ document.addEventListener('DOMContentLoaded', () => {
         );
 
         if (canMove) {
+          if (!gameState.isGameActive) {
+            startGame();
+          }
+
           movePiece(
             gameState.selectedCell.row,
             gameState.selectedCell.col,
@@ -113,14 +191,7 @@ document.addEventListener('DOMContentLoaded', () => {
           deselectCell();
 
           if (!hasValidMoves()) {
-            setTimeout(() => {
-              const message =
-                gameState.remainingPieces === 1
-                  ? 'Parabéns! Você venceu!'
-                  : `Fim de jogo! Restaram ${gameState.remainingPieces} peças.`;
-              alert(message);
-              initGame();
-            }, 300);
+            endGame();
           }
 
           return;
@@ -132,11 +203,45 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  function createCelebrationEffect() {
+    const container = document.createElement('div');
+    container.className = 'celebration-particles';
+    document.body.appendChild(container);
+
+    for (let i = 0; i < 50; i++) {
+      setTimeout(() => {
+        const particle = document.createElement('div');
+        particle.className = 'particle';
+        particle.style.left = Math.random() * 100 + '%';
+        particle.style.animationDelay = Math.random() * 3 + 's';
+        particle.style.backgroundColor = `hsl(${
+          Math.random() * 60 + 30
+        }, 70%, 50%)`;
+        container.appendChild(particle);
+
+        setTimeout(() => {
+          particle.remove();
+        }, 3000);
+      }, i * 100);
+    }
+
+    setTimeout(() => {
+      container.remove();
+    }, 6000);
+  }
+
   function selectCell(row, col) {
     gameState.selectedCell = { row, col };
 
     const cell = getCellElement(row, col);
     cell.classList.add('selected');
+
+    playSound('select');
+    cell.style.animation = 'none';
+
+    setTimeout(() => {
+      cell.style.animation = 'pulse 2s infinite';
+    }, 10);
   }
 
   function deselectCell() {
@@ -145,6 +250,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const cell = getCellElement(row, col);
       cell.classList.remove('selected');
+      cell.style.animation = '';
 
       gameState.selectedCell = null;
     }
@@ -168,16 +274,53 @@ document.addEventListener('DOMContentLoaded', () => {
     const middleRow = (fromRow + toRow) / 2;
     const middleCol = (fromCol + toCol) / 2;
 
-    gameState.board[fromRow][fromCol] = 2;
-    gameState.board[middleRow][middleCol] = 2;
-    gameState.board[toRow][toCol] = 1;
+    const fromCell = getCellElement(fromRow, fromCol);
+    const toCell = getCellElement(toRow, toCol);
+    const piece = fromCell.querySelector('.piece');
 
-    removePieceFromCell(fromRow, fromCol);
-    removePieceFromCell(middleRow, middleCol);
-    addPieceToCell(toRow, toCol);
+    if (piece) {
+      piece.style.transition = 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+      piece.style.transform = 'scale(1.2)';
 
-    gameState.remainingPieces--;
-    updateRemainingPieces();
+      setTimeout(() => {
+        gameState.board[fromRow][fromCol] = 2;
+        gameState.board[middleRow][middleCol] = 2;
+        gameState.board[toRow][toCol] = 1;
+
+        removePieceFromCell(fromRow, fromCol);
+        removePieceFromCell(middleRow, middleCol);
+        addPieceToCell(toRow, toCol);
+
+        gameState.remainingPieces--;
+        gameState.movesCount++;
+        updateGameStats();
+
+        playSound('move');
+
+        const newPiece = toCell.querySelector('.piece');
+
+        if (newPiece) {
+          newPiece.style.animation = 'bounceIn 0.5s ease-out';
+
+          setTimeout(() => {
+            newPiece.style.animation = '';
+          }, 500);
+        }
+      }, 150);
+    } else {
+      gameState.board[fromRow][fromCol] = 2;
+      gameState.board[middleRow][middleCol] = 2;
+      gameState.board[toRow][toCol] = 1;
+
+      removePieceFromCell(fromRow, fromCol);
+      removePieceFromCell(middleRow, middleCol);
+      addPieceToCell(toRow, toCol);
+
+      gameState.remainingPieces--;
+      gameState.movesCount++;
+      updateGameStats();
+      playSound('move');
+    }
   }
 
   function removePieceFromCell(row, col) {
@@ -205,8 +348,74 @@ document.addEventListener('DOMContentLoaded', () => {
     );
   }
 
-  function updateRemainingPieces() {
+  function updateGameStats() {
     remainingPiecesElement.textContent = gameState.remainingPieces;
+    movesCountElement.textContent = gameState.movesCount;
+
+    const minutes = Math.floor(gameState.gameTime / 60);
+    const seconds = gameState.gameTime % 60;
+    gameTimeElement.textContent = `${minutes
+      .toString()
+      .padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  }
+
+  function startGame() {
+    gameState.isGameActive = true;
+    gameState.startTime = Date.now();
+
+    gameState.timerInterval = setInterval(() => {
+      gameState.gameTime = Math.floor(
+        (Date.now() - gameState.startTime) / 1000
+      );
+      updateGameStats();
+    }, 1000);
+  }
+
+  function endGame() {
+    gameState.isGameActive = false;
+
+    if (gameState.timerInterval) {
+      clearInterval(gameState.timerInterval);
+      gameState.timerInterval = null;
+    }
+
+    const isVictory = gameState.remainingPieces === 1;
+
+    if (isVictory) {
+      playSound('win');
+      createCelebrationEffect();
+    }
+
+    const currentScore = gameState.remainingPieces;
+    const bestScore = localStorage.getItem('bestScore');
+
+    if (!bestScore || currentScore < parseInt(bestScore)) {
+      localStorage.setItem('bestScore', currentScore.toString());
+      loadBestScore();
+
+      if (bestScoreElement) {
+        bestScoreElement.style.animation = 'bounceIn 0.8s ease-out';
+
+        setTimeout(() => {
+          bestScoreElement.style.animation = '';
+        }, 800);
+      }
+    }
+
+    setTimeout(() => {
+      const message = isVictory
+        ? `Parabéns! Você venceu!\n\n⏱️ Tempo: ${gameTimeElement.textContent}\n🔄 Movimentos: ${gameState.movesCount}`
+        : `Fim de jogo!\n\n💎 Peças restantes: ${gameState.remainingPieces}\n⏱️ Tempo: ${gameTimeElement.textContent}\n🔄 Movimentos: ${gameState.movesCount}\n\nTente novamente para melhorar!`;
+
+      if (confirm(message + '\n\nDeseja jogar novamente?')) {
+        initGame();
+      }
+    }, 300);
+  }
+
+  function loadBestScore() {
+    const bestScore = localStorage.getItem('bestScore');
+    bestScoreElement.textContent = bestScore ? bestScore : '--';
   }
 
   function isValidPosition(row, col) {
