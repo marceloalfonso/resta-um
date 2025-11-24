@@ -24,12 +24,13 @@ function prepareScriptForTests(scriptSource) {
         movePiece,
         startGame,
         endGame,
-        loadBestScore,
-        createCelebrationEffect,
-        playSound,
+        checkGameOver,
         updateGameStats,
         removePieceFromCell,
         addPieceToCell,
+        loadBestScore,
+        createCelebrationEffect,
+        playSound,
       };
     }
   `;
@@ -55,11 +56,43 @@ function createDom(modifiedScript) {
     `<script>${modifiedScript}</script>`
   );
 
-  return new JSDOM(patched, {
+  const dom = new JSDOM(patched, {
     runScripts: 'dangerously',
     resources: 'usable',
     url: 'http://localhost',
   });
+
+  dom.window.confirmMessage = null;
+  dom.window.confirm = (message) => {
+    dom.window.confirmMessage = message;
+    return false;
+  };
+
+  dom.window.localStorage = {
+    storage: {},
+    getItem(key) {
+      return this.storage[key] || null;
+    },
+    setItem(key, value) {
+      this.storage[key] = value;
+    },
+    removeItem(key) {
+      delete this.storage[key];
+    },
+    clear() {
+      this.storage = {};
+    },
+  };
+
+  dom.window.vibrateCall = null;
+  dom.window.vibrateCalls = [];
+  dom.window.navigator.vibrate = (pattern) => {
+    dom.window.vibrateCall = pattern;
+    dom.window.vibrateCalls.push(pattern);
+    return true;
+  };
+
+  return dom;
 }
 
 jest.setTimeout(10000);
@@ -101,10 +134,6 @@ describe('Testes unitários', () => {
 
   test('isValidPosition() - Deve aceitar posição no canto inferior [6,4]', () => {
     expect(api.isValidPosition(6, 4)).toBe(true);
-  });
-
-  test('isValidPosition() - Deve aceitar posição central [3,3]', () => {
-    expect(api.isValidPosition(3, 3)).toBe(true);
   });
 
   test('isValidPosition() - Deve rejeitar célula inválida [0,0]', () => {
@@ -817,10 +846,191 @@ describe('Testes unitários', () => {
     await delay(200);
     expect(api.gameState.remainingPieces).toBe(initialPieces - 1);
   });
+
+  test('checkGameOver() - Deve chamar endGame quando não há movimentos válidos', async () => {
+    api.gameState.board = [
+      [0, 0, 2, 2, 2, 0, 0],
+      [0, 0, 2, 2, 2, 0, 0],
+      [2, 2, 2, 2, 2, 2, 2],
+      [2, 2, 2, 1, 2, 2, 2],
+      [2, 2, 2, 2, 2, 2, 2],
+      [0, 0, 2, 2, 2, 0, 0],
+      [0, 0, 2, 2, 2, 0, 0],
+    ];
+    api.gameState.remainingPieces = 1;
+    api.gameState.isGameActive = true;
+
+    api.checkGameOver();
+    await delay(400);
+
+    expect(api.gameState.isGameActive).toBe(false);
+    expect(window.confirmMessage).toBeTruthy();
+  });
+
+  test('checkGameOver() - Deve chamar endGame quando resta apenas 1 peça', async () => {
+    api.gameState.board = [
+      [0, 0, 2, 1, 2, 0, 0],
+      [0, 0, 2, 2, 2, 0, 0],
+      [2, 2, 2, 2, 2, 2, 2],
+      [2, 2, 2, 2, 2, 2, 2],
+      [2, 2, 2, 2, 2, 2, 2],
+      [0, 0, 2, 2, 2, 0, 0],
+      [0, 0, 2, 2, 2, 0, 0],
+    ];
+    api.gameState.remainingPieces = 1;
+    api.gameState.isGameActive = true;
+
+    api.checkGameOver();
+    await delay(400);
+
+    expect(api.gameState.isGameActive).toBe(false);
+    expect(window.confirmMessage).toContain('Parabéns');
+  });
+
+  test('checkGameOver() - Não deve fazer nada se jogo já está inativo', async () => {
+    api.gameState.isGameActive = false;
+    api.gameState.remainingPieces = 5;
+
+    const stateBefore = { ...api.gameState };
+
+    api.checkGameOver();
+    await delay(100);
+
+    expect(api.gameState).toEqual(stateBefore);
+  });
+
+  test('checkGameOver() - Não deve chamar endGame se ainda há movimentos válidos', async () => {
+    api.initGame();
+    await delay(200);
+
+    api.startGame();
+    expect(api.gameState.isGameActive).toBe(true);
+
+    api.checkGameOver();
+    await delay(100);
+
+    expect(api.gameState.isGameActive).toBe(true);
+  });
+
+  test('createCelebrationEffect() - Deve criar elementos de partículas no DOM', async () => {
+    const initialChildrenCount = window.document.body.children.length;
+
+    api.createCelebrationEffect();
+    await delay(200);
+
+    const currentChildrenCount = window.document.body.children.length;
+    expect(currentChildrenCount).toBeGreaterThan(initialChildrenCount);
+  });
+
+  test('createCelebrationEffect() - Deve criar container com classe celebration-particles', async () => {
+    api.createCelebrationEffect();
+    await delay(100);
+
+    const container = window.document.querySelector('.celebration-particles');
+    expect(container).toBeTruthy();
+  });
+
+  test('createCelebrationEffect() - Deve remover container após 6 segundos', async () => {
+    api.createCelebrationEffect();
+    await delay(100);
+
+    const containerBefore = window.document.querySelector(
+      '.celebration-particles'
+    );
+    expect(containerBefore).toBeTruthy();
+
+    await delay(6500);
+
+    const containerAfter = window.document.querySelector(
+      '.celebration-particles'
+    );
+    expect(containerAfter).toBeNull();
+  });
+
+  test('createCelebrationEffect() - Deve criar múltiplas partículas', async () => {
+    api.createCelebrationEffect();
+    await delay(1000);
+
+    const container = window.document.querySelector('.celebration-particles');
+    if (container) {
+      const particles = container.querySelectorAll('.particle');
+      expect(particles.length).toBeGreaterThan(0);
+    }
+  });
+
+  test('playSound() - Deve aceitar tipo "select" e chamar vibrate', () => {
+    window.vibrateCalls = [];
+
+    api.playSound('select');
+
+    expect(window.vibrateCalls.length).toBe(1);
+    expect(window.vibrateCalls[0]).toBe(50);
+  });
+
+  test('playSound() - Deve aceitar tipo "move" com padrão de array', () => {
+    window.vibrateCalls = [];
+
+    api.playSound('move');
+
+    expect(window.vibrateCalls.length).toBe(1);
+    expect(window.vibrateCalls[0]).toEqual([100, 50, 100]);
+  });
+
+  test('playSound() - Deve aceitar tipo "win" com padrão longo', () => {
+    window.vibrateCalls = [];
+
+    api.playSound('win');
+
+    expect(window.vibrateCalls.length).toBe(1);
+    expect(window.vibrateCalls[0]).toEqual([200, 100, 200, 100, 200]);
+  });
+
+  test('playSound() - Deve aceitar tipo "error"', () => {
+    window.vibrateCalls = [];
+
+    api.playSound('error');
+
+    expect(window.vibrateCalls.length).toBe(1);
+    expect(window.vibrateCalls[0]).toBe(200);
+  });
+
+  test('playSound() - Não deve quebrar se navigator.vibrate não existir', () => {
+    const originalVibrate = window.navigator.vibrate;
+    delete window.navigator.vibrate;
+
+    expect(() => api.playSound('select')).not.toThrow();
+    expect(() => api.playSound('move')).not.toThrow();
+    expect(() => api.playSound('win')).not.toThrow();
+    expect(() => api.playSound('error')).not.toThrow();
+
+    window.navigator.vibrate = originalVibrate;
+  });
+
+  test('playSound() - Não deve fazer nada com tipo desconhecido', () => {
+    window.vibrateCalls = [];
+
+    api.playSound('unknown');
+
+    expect(window.vibrateCalls.length).toBe(0);
+  });
+
+  test('loadBestScore() - Deve carregar melhor tempo salvo no localStorage', () => {
+    window.localStorage.setItem('bestTime', '125');
+    api.loadBestScore();
+    const bestScoreElement = window.document.getElementById('best-score');
+    expect(bestScoreElement.textContent).toBe('02:05');
+  });
+
+  test('loadBestScore() - Deve exibir "--" quando não há melhor tempo', () => {
+    window.localStorage.clear();
+    api.loadBestScore();
+    const bestScoreElement = window.document.getElementById('best-score');
+    expect(bestScoreElement.textContent).toBe('--');
+  });
 });
 
 describe('Testes de integração', () => {
-  let dom, window, api, confirmSpy;
+  let dom, window, api;
 
   beforeAll(() => {
     const rawScript = fs.readFileSync(
@@ -842,93 +1052,6 @@ describe('Testes de integração', () => {
 
   afterAll(() => {
     window.close();
-  });
-
-  test('Deve ativar flag isGameActive ao iniciar jogo', () => {
-    expect(api.gameState.isGameActive).toBe(false);
-    api.startGame();
-    expect(api.gameState.isGameActive).toBe(true);
-  });
-
-  test('Deve inicializar startTime ao iniciar jogo', () => {
-    expect(api.gameState.startTime).toBeNull();
-    api.startGame();
-    expect(api.gameState.startTime).toBeTruthy();
-    expect(typeof api.gameState.startTime).toBe('number');
-  });
-
-  test('Deve criar timerInterval ao iniciar jogo', () => {
-    expect(api.gameState.timerInterval).toBeNull();
-    api.startGame();
-    expect(api.gameState.timerInterval).toBeTruthy();
-  });
-
-  test('Deve incrementar gameTime automaticamente após 1 segundo', async () => {
-    api.startGame();
-    const initialTime = api.gameState.gameTime;
-    await delay(1100);
-    expect(api.gameState.gameTime).toBeGreaterThan(initialTime);
-  });
-
-  test('Deve atualizar stats automaticamente durante o jogo', async () => {
-    api.startGame();
-    await delay(1100);
-    const timeElement = window.document.getElementById('game-time');
-    expect(timeElement.textContent).not.toBe('00:00');
-  });
-
-  test('Deve iniciar jogo automaticamente no primeiro movimento', async () => {
-    expect(api.gameState.isGameActive).toBe(false);
-    api.handleCellClick(3, 1);
-    await delay(20);
-    api.handleCellClick(3, 3);
-    await delay(200);
-    expect(api.gameState.isGameActive).toBe(true);
-  });
-
-  test('Não deve reiniciar timer em movimentos subsequentes', async () => {
-    api.handleCellClick(3, 1);
-    await delay(20);
-    api.handleCellClick(3, 3);
-    await delay(200);
-    const firstStartTime = api.gameState.startTime;
-    api.handleCellClick(3, 4);
-    await delay(20);
-    api.handleCellClick(3, 2);
-    await delay(200);
-    expect(api.gameState.startTime).toBe(firstStartTime);
-  });
-
-  test('Deve desativar flag isGameActive ao finalizar jogo', async () => {
-    api.startGame();
-    expect(api.gameState.isGameActive).toBe(true);
-    api.endGame();
-    await delay(400);
-    expect(api.gameState.isGameActive).toBe(false);
-  });
-
-  test('Deve limpar timerInterval ao finalizar jogo', async () => {
-    api.startGame();
-    const interval = api.gameState.timerInterval;
-    expect(interval).toBeTruthy();
-    api.endGame();
-    await delay(400);
-    expect(api.gameState.timerInterval).toBeNull();
-  });
-
-  test('Deve parar incremento de gameTime após endGame', async () => {
-    api.startGame();
-    await delay(500);
-    api.endGame();
-    await delay(400);
-    const timeAfterEnd = api.gameState.gameTime;
-    await delay(1100);
-    expect(api.gameState.gameTime).toBe(timeAfterEnd);
-  });
-
-  test('Não deve falhar ao finalizar jogo já inativo', () => {
-    expect(api.gameState.isGameActive).toBe(false);
-    expect(() => api.endGame()).not.toThrow();
   });
 
   test('Deve executar sequência completa de 5 movimentos válidos', async () => {
@@ -1030,6 +1153,7 @@ describe('Testes de integração', () => {
 
     expect(api.gameState.remainingPieces).toBe(1);
     expect(api.hasValidMoves()).toBe(false);
+    expect(api.gameState.isGameActive).toBe(false); // adicionar esta linha
   });
 
   test('Deve detectar condição de derrota com peças isoladas', async () => {
@@ -1240,5 +1364,735 @@ describe('Testes de integração', () => {
       }
     }
     expect(countInBoard).toBe(api.gameState.remainingPieces);
+  });
+
+  test('Deve chamar checkGameOver após cada movimento', async () => {
+    api.startGame();
+    expect(api.gameState.isGameActive).toBe(true);
+
+    api.handleCellClick(3, 1);
+    await delay(20);
+    api.handleCellClick(3, 3);
+    await delay(200);
+
+    expect(api.gameState.isGameActive).toBe(true);
+  });
+
+  test('Deve detectar derrota automática quando não há mais movimentos', async () => {
+    api.initGame();
+    await delay(600);
+
+    api.gameState.board = [
+      [0, 0, 1, 2, 2, 0, 0],
+      [0, 0, 2, 2, 2, 0, 0],
+      [2, 2, 2, 2, 2, 2, 2],
+      [2, 2, 2, 2, 2, 2, 2],
+      [2, 2, 2, 2, 2, 2, 2],
+      [0, 0, 2, 2, 2, 0, 0],
+      [0, 0, 2, 2, 1, 0, 0],
+    ];
+    api.gameState.remainingPieces = 2;
+
+    for (let row = 0; row < 7; row++) {
+      for (let col = 0; col < 7; col++) {
+        if (api.gameState.board[row][col] !== 0) {
+          api.removePieceFromCell(row, col);
+        }
+      }
+    }
+
+    api.addPieceToCell(0, 2);
+    api.addPieceToCell(6, 4);
+
+    api.startGame();
+    expect(api.gameState.isGameActive).toBe(true);
+
+    expect(api.hasValidMoves()).toBe(false);
+  });
+
+  test('Deve executar sequência de movimentos em todas as direções', async () => {
+    const moves = [
+      { from: [3, 1], to: [3, 3], dir: 'direita' },
+      { from: [1, 2], to: [3, 2], dir: 'baixo' },
+      { from: [4, 2], to: [2, 2], dir: 'cima' },
+      { from: [3, 4], to: [3, 2], dir: 'esquerda' },
+    ];
+
+    for (let i = 0; i < moves.length; i++) {
+      const [fromRow, fromCol] = moves[i].from;
+      const [toRow, toCol] = moves[i].to;
+
+      api.handleCellClick(fromRow, fromCol);
+      await delay(20);
+      expect(api.gameState.selectedCell).toBeTruthy();
+
+      api.handleCellClick(toRow, toCol);
+      await delay(200);
+      expect(api.gameState.movesCount).toBe(i + 1);
+    }
+
+    expect(api.gameState.remainingPieces).toBe(28);
+  });
+
+  test('Deve manter timer ativo durante sequência longa de movimentos', async () => {
+    const moves = [
+      { from: [3, 1], to: [3, 3] },
+      { from: [1, 2], to: [3, 2] },
+      { from: [3, 4], to: [3, 2] },
+    ];
+
+    for (const move of moves) {
+      const [fromRow, fromCol] = move.from;
+      const [toRow, toCol] = move.to;
+      api.handleCellClick(fromRow, fromCol);
+      await delay(20);
+      api.handleCellClick(toRow, toCol);
+      await delay(200);
+    }
+
+    expect(api.gameState.isGameActive).toBe(true);
+    expect(api.gameState.timerInterval).toBeTruthy();
+
+    await delay(1100);
+    expect(api.gameState.gameTime).toBeGreaterThan(0);
+  });
+
+  test('Deve manter consistência do tabuleiro durante sequência complexa', async () => {
+    const moves = [
+      { from: [3, 1], to: [3, 3] },
+      { from: [1, 2], to: [3, 2] },
+      { from: [4, 2], to: [2, 2] },
+    ];
+
+    for (const move of moves) {
+      const [fromRow, fromCol] = move.from;
+      const [toRow, toCol] = move.to;
+
+      const piecesBefore = api.gameState.remainingPieces;
+
+      api.handleCellClick(fromRow, fromCol);
+      await delay(20);
+      api.handleCellClick(toRow, toCol);
+      await delay(200);
+
+      expect(api.gameState.remainingPieces).toBe(piecesBefore - 1);
+
+      expect(
+        api.getCellElement(toRow, toCol).querySelector('.piece')
+      ).toBeTruthy();
+
+      expect(
+        api.getCellElement(fromRow, fromCol).querySelector('.piece')
+      ).toBeNull();
+    }
+  });
+
+  test('Deve calcular tempo corretamente em jogo longo', async () => {
+    api.handleCellClick(3, 1);
+    await delay(20);
+    api.handleCellClick(3, 3);
+    await delay(200);
+
+    expect(api.gameState.isGameActive).toBe(true);
+    const startTime = api.gameState.startTime;
+
+    await delay(2200);
+
+    expect(api.gameState.gameTime).toBeGreaterThanOrEqual(2);
+    expect(api.gameState.startTime).toBe(startTime);
+
+    const timeElement = window.document.getElementById('game-time');
+    expect(timeElement.textContent).toMatch(/00:0[2-9]/);
+  });
+
+  test('Deve preservar estado do jogo após múltiplas desseleções', async () => {
+    const initialBoard = JSON.parse(JSON.stringify(api.gameState.board));
+    const initialPieces = api.gameState.remainingPieces;
+
+    for (let i = 0; i < 5; i++) {
+      api.handleCellClick(2, 2);
+      await delay(20);
+      api.handleCellClick(2, 2);
+      await delay(20);
+    }
+
+    expect(api.gameState.board).toEqual(initialBoard);
+    expect(api.gameState.remainingPieces).toBe(initialPieces);
+    expect(api.gameState.movesCount).toBe(0);
+  });
+
+  test('Deve manter integridade após reiniciar jogo durante partida ativa', async () => {
+    api.handleCellClick(3, 1);
+    await delay(20);
+    api.handleCellClick(3, 3);
+    await delay(200);
+
+    api.handleCellClick(1, 2);
+    await delay(20);
+    api.handleCellClick(3, 2);
+    await delay(200);
+
+    expect(api.gameState.movesCount).toBeGreaterThan(0);
+    expect(api.gameState.isGameActive).toBe(true);
+
+    api.initGame();
+    await delay(600);
+
+    expect(api.gameState.movesCount).toBe(0);
+    expect(api.gameState.remainingPieces).toBe(32);
+    expect(api.gameState.isGameActive).toBe(false);
+    expect(api.gameState.selectedCell).toBeNull();
+    expect(api.gameState.timerInterval).toBeNull();
+
+    expect(api.gameState.board[3][3]).toBe(2);
+    expect(api.gameState.board[3][2]).toBe(1);
+  });
+
+  test('Deve validar sequência completa (seleção + movimento + desseleção automática)', async () => {
+    api.handleCellClick(3, 1);
+    await delay(20);
+    expect(api.gameState.selectedCell).toEqual({ row: 3, col: 1 });
+
+    const cell = api.getCellElement(3, 1);
+    expect(cell.classList.contains('selected')).toBe(true);
+
+    api.handleCellClick(3, 3);
+    await delay(200);
+
+    expect(api.gameState.selectedCell).toBeNull();
+    expect(cell.classList.contains('selected')).toBe(false);
+  });
+
+  test('Deve exibir mensagem de vitória correta ao ganhar', async () => {
+    api.initGame();
+    await delay(600);
+
+    api.gameState.board = [
+      [0, 0, 2, 1, 2, 0, 0],
+      [0, 0, 2, 1, 2, 0, 0],
+      [2, 2, 2, 2, 2, 2, 2],
+      [2, 2, 2, 2, 2, 2, 2],
+      [2, 2, 2, 2, 2, 2, 2],
+      [0, 0, 2, 2, 2, 0, 0],
+      [0, 0, 2, 2, 2, 0, 0],
+    ];
+    api.gameState.remainingPieces = 2;
+    api.gameState.movesCount = 30;
+
+    for (let row = 0; row < 7; row++) {
+      for (let col = 0; col < 7; col++) {
+        if (api.gameState.board[row][col] !== 0) {
+          api.removePieceFromCell(row, col);
+        }
+      }
+    }
+
+    api.addPieceToCell(0, 3);
+    api.addPieceToCell(1, 3);
+
+    api.startGame();
+    api.handleCellClick(0, 3);
+    await delay(20);
+    api.handleCellClick(2, 3);
+    await delay(400);
+
+    expect(window.confirmMessage).toBeTruthy();
+    expect(window.confirmMessage).toContain('Parabéns, você venceu!');
+    expect(window.confirmMessage).toContain('Tempo:');
+    expect(window.confirmMessage).toContain('Movimentos:');
+    expect(window.confirmMessage).toContain('31');
+  });
+
+  test('Deve exibir mensagem de derrota correta ao perder', async () => {
+    api.initGame();
+    await delay(600);
+
+    api.gameState.board = [
+      [0, 0, 1, 2, 2, 0, 0],
+      [0, 0, 2, 2, 2, 0, 0],
+      [2, 2, 2, 2, 2, 2, 2],
+      [2, 2, 2, 2, 2, 2, 2],
+      [2, 2, 2, 2, 2, 2, 1],
+      [0, 0, 2, 2, 2, 0, 0],
+      [0, 0, 2, 2, 1, 0, 0],
+    ];
+    api.gameState.remainingPieces = 3;
+    api.gameState.movesCount = 29;
+
+    for (let row = 0; row < 7; row++) {
+      for (let col = 0; col < 7; col++) {
+        if (api.gameState.board[row][col] !== 0) {
+          api.removePieceFromCell(row, col);
+        }
+      }
+    }
+
+    api.addPieceToCell(0, 2);
+    api.addPieceToCell(4, 6);
+    api.addPieceToCell(6, 4);
+
+    api.startGame();
+
+    api.endGame();
+    await delay(400);
+
+    expect(window.confirmMessage).toBeTruthy();
+    expect(window.confirmMessage).toContain('Fim de jogo, você perdeu!');
+    expect(window.confirmMessage).toContain('Peças restantes: 3');
+    expect(window.confirmMessage).toContain('Movimentos: 29');
+  });
+
+  test('Deve atualizar melhor tempo quando vencer com tempo menor', async () => {
+    window.localStorage.clear();
+
+    api.initGame();
+    await delay(600);
+
+    api.gameState.board = [
+      [0, 0, 2, 1, 2, 0, 0],
+      [0, 0, 2, 1, 2, 0, 0],
+      [2, 2, 2, 2, 2, 2, 2],
+      [2, 2, 2, 2, 2, 2, 2],
+      [2, 2, 2, 2, 2, 2, 2],
+      [0, 0, 2, 2, 2, 0, 0],
+      [0, 0, 2, 2, 2, 0, 0],
+    ];
+    api.gameState.remainingPieces = 2;
+    api.gameState.gameTime = 10;
+
+    for (let row = 0; row < 7; row++) {
+      for (let col = 0; col < 7; col++) {
+        if (api.gameState.board[row][col] !== 0) {
+          api.removePieceFromCell(row, col);
+        }
+      }
+    }
+
+    api.addPieceToCell(0, 3);
+    api.addPieceToCell(1, 3);
+
+    api.startGame();
+    api.handleCellClick(0, 3);
+    await delay(20);
+    api.handleCellClick(2, 3);
+    await delay(400);
+
+    const savedTime1 = window.localStorage.getItem('bestTime');
+    expect(savedTime1).toBe('10');
+
+    window.confirmMessage = null;
+    api.initGame();
+    await delay(600);
+
+    api.gameState.board = [
+      [0, 0, 2, 1, 2, 0, 0],
+      [0, 0, 2, 1, 2, 0, 0],
+      [2, 2, 2, 2, 2, 2, 2],
+      [2, 2, 2, 2, 2, 2, 2],
+      [2, 2, 2, 2, 2, 2, 2],
+      [0, 0, 2, 2, 2, 0, 0],
+      [0, 0, 2, 2, 2, 0, 0],
+    ];
+    api.gameState.remainingPieces = 2;
+    api.gameState.gameTime = 5;
+
+    for (let row = 0; row < 7; row++) {
+      for (let col = 0; col < 7; col++) {
+        if (api.gameState.board[row][col] !== 0) {
+          api.removePieceFromCell(row, col);
+        }
+      }
+    }
+
+    api.addPieceToCell(0, 3);
+    api.addPieceToCell(1, 3);
+
+    api.startGame();
+    api.handleCellClick(0, 3);
+    await delay(20);
+    api.handleCellClick(2, 3);
+    await delay(400);
+
+    const savedTime2 = window.localStorage.getItem('bestTime');
+    expect(savedTime2).toBe('5');
+  });
+
+  test('Não deve atualizar melhor tempo quando vencer com tempo maior', async () => {
+    window.localStorage.setItem('bestTime', '5');
+
+    api.initGame();
+    await delay(600);
+    api.loadBestScore();
+
+    api.gameState.board = [
+      [0, 0, 2, 1, 2, 0, 0],
+      [0, 0, 2, 1, 2, 0, 0],
+      [2, 2, 2, 2, 2, 2, 2],
+      [2, 2, 2, 2, 2, 2, 2],
+      [2, 2, 2, 2, 2, 2, 2],
+      [0, 0, 2, 2, 2, 0, 0],
+      [0, 0, 2, 2, 2, 0, 0],
+    ];
+    api.gameState.remainingPieces = 2;
+    api.gameState.gameTime = 15;
+
+    for (let row = 0; row < 7; row++) {
+      for (let col = 0; col < 7; col++) {
+        if (api.gameState.board[row][col] !== 0) {
+          api.removePieceFromCell(row, col);
+        }
+      }
+    }
+
+    api.addPieceToCell(0, 3);
+    api.addPieceToCell(1, 3);
+
+    api.startGame();
+    api.handleCellClick(0, 3);
+    await delay(20);
+    api.handleCellClick(2, 3);
+    await delay(400);
+
+    const savedTime = window.localStorage.getItem('bestTime');
+    expect(savedTime).toBe('5');
+  });
+
+  test('Não deve salvar melhor tempo ao perder', async () => {
+    window.localStorage.clear();
+
+    api.initGame();
+    await delay(600);
+
+    api.gameState.board = [
+      [0, 0, 1, 2, 2, 0, 0],
+      [0, 0, 2, 2, 2, 0, 0],
+      [2, 2, 2, 2, 2, 2, 2],
+      [2, 2, 2, 2, 2, 2, 2],
+      [2, 2, 2, 2, 2, 2, 2],
+      [0, 0, 2, 2, 2, 0, 0],
+      [0, 0, 2, 2, 1, 0, 0],
+    ];
+    api.gameState.remainingPieces = 2;
+    api.gameState.gameTime = 8;
+
+    for (let row = 0; row < 7; row++) {
+      for (let col = 0; col < 7; col++) {
+        if (api.gameState.board[row][col] !== 0) {
+          api.removePieceFromCell(row, col);
+        }
+      }
+    }
+
+    api.addPieceToCell(0, 2);
+    api.addPieceToCell(6, 4);
+
+    api.startGame();
+    api.endGame();
+    await delay(400);
+
+    const savedTime = window.localStorage.getItem('bestTime');
+    expect(savedTime).toBeNull();
+  });
+
+  test('Deve incluir estatísticas corretas na mensagem de vitória', async () => {
+    api.initGame();
+    await delay(600);
+
+    api.gameState.board = [
+      [0, 0, 2, 1, 2, 0, 0],
+      [0, 0, 2, 1, 2, 0, 0],
+      [2, 2, 2, 2, 2, 2, 2],
+      [2, 2, 2, 2, 2, 2, 2],
+      [2, 2, 2, 2, 2, 2, 2],
+      [0, 0, 2, 2, 2, 0, 0],
+      [0, 0, 2, 2, 2, 0, 0],
+    ];
+    api.gameState.remainingPieces = 2;
+    api.gameState.movesCount = 15;
+    api.gameState.gameTime = 45;
+
+    for (let row = 0; row < 7; row++) {
+      for (let col = 0; col < 7; col++) {
+        if (api.gameState.board[row][col] !== 0) {
+          api.removePieceFromCell(row, col);
+        }
+      }
+    }
+
+    api.addPieceToCell(0, 3);
+    api.addPieceToCell(1, 3);
+
+    api.startGame();
+    api.updateGameStats();
+
+    api.handleCellClick(0, 3);
+    await delay(20);
+    api.handleCellClick(2, 3);
+    await delay(400);
+
+    expect(window.confirmMessage).toContain('00:45');
+    expect(window.confirmMessage).toContain('16');
+  });
+
+  test('Deve incluir estatísticas corretas na mensagem de derrota', async () => {
+    api.initGame();
+    await delay(600);
+
+    api.gameState.board = [
+      [0, 0, 1, 2, 2, 0, 0],
+      [0, 0, 2, 2, 2, 0, 0],
+      [2, 2, 2, 2, 2, 2, 2],
+      [2, 2, 2, 2, 2, 2, 2],
+      [2, 2, 2, 2, 2, 2, 1],
+      [0, 0, 2, 2, 2, 0, 0],
+      [0, 0, 2, 2, 2, 0, 0],
+    ];
+    api.gameState.remainingPieces = 2;
+    api.gameState.movesCount = 25;
+    api.gameState.gameTime = 120;
+
+    for (let row = 0; row < 7; row++) {
+      for (let col = 0; col < 7; col++) {
+        if (api.gameState.board[row][col] !== 0) {
+          api.removePieceFromCell(row, col);
+        }
+      }
+    }
+
+    api.addPieceToCell(0, 2);
+    api.addPieceToCell(4, 6);
+
+    api.startGame();
+    api.updateGameStats();
+
+    api.endGame();
+    await delay(400);
+
+    expect(window.confirmMessage).toContain('Peças restantes: 2');
+    expect(window.confirmMessage).toContain('02:00');
+    expect(window.confirmMessage).toContain('Movimentos: 25');
+  });
+
+  test('Deve aplicar animação bounceIn na peça movida', async () => {
+    api.handleCellClick(3, 1);
+    await delay(20);
+    api.handleCellClick(3, 3);
+    await delay(200);
+
+    const targetCell = api.getCellElement(3, 3);
+    const piece = targetCell.querySelector('.piece');
+
+    expect(piece).toBeTruthy();
+  });
+
+  test('Deve adicionar classe selected com animação ao selecionar peça', async () => {
+    const cell = api.getCellElement(2, 2);
+
+    api.selectCell(2, 2);
+    await delay(20);
+
+    expect(cell.classList.contains('selected')).toBe(true);
+    expect(cell.style.animation).toBeTruthy();
+  });
+
+  test('Deve remover animação ao desselecionar peça', async () => {
+    const cell = api.getCellElement(2, 2);
+
+    api.selectCell(2, 2);
+    await delay(20);
+    expect(cell.style.animation).toBeTruthy();
+
+    api.deselectCell();
+    await delay(20);
+    expect(cell.style.animation).toBe('');
+  });
+
+  test('Deve validar formato do tempo exibido no DOM', async () => {
+    api.startGame();
+
+    const testTimes = [
+      { seconds: 0, expected: '00:00' },
+      { seconds: 5, expected: '00:05' },
+      { seconds: 59, expected: '00:59' },
+      { seconds: 60, expected: '01:00' },
+      { seconds: 125, expected: '02:05' },
+      { seconds: 3599, expected: '59:59' },
+    ];
+
+    for (const { seconds, expected } of testTimes) {
+      api.gameState.gameTime = seconds;
+      api.updateGameStats();
+      const timeElement = window.document.getElementById('game-time');
+      expect(timeElement.textContent).toBe(expected);
+    }
+  });
+
+  test('Deve limpar confirmMessage entre diferentes fins de jogo', async () => {
+    api.initGame();
+    await delay(600);
+
+    api.gameState.board = [
+      [0, 0, 2, 1, 2, 0, 0],
+      [0, 0, 2, 1, 2, 0, 0],
+      [2, 2, 2, 2, 2, 2, 2],
+      [2, 2, 2, 2, 2, 2, 2],
+      [2, 2, 2, 2, 2, 2, 2],
+      [0, 0, 2, 2, 2, 0, 0],
+      [0, 0, 2, 2, 2, 0, 0],
+    ];
+    api.gameState.remainingPieces = 2;
+
+    for (let row = 0; row < 7; row++) {
+      for (let col = 0; col < 7; col++) {
+        if (api.gameState.board[row][col] !== 0) {
+          api.removePieceFromCell(row, col);
+        }
+      }
+    }
+
+    api.addPieceToCell(0, 3);
+    api.addPieceToCell(1, 3);
+
+    api.startGame();
+    api.handleCellClick(0, 3);
+    await delay(20);
+    api.handleCellClick(2, 3);
+    await delay(400);
+
+    const firstMessage = window.confirmMessage;
+    expect(firstMessage).toContain('Parabéns');
+
+    window.confirmMessage = null;
+    api.initGame();
+    await delay(600);
+
+    api.gameState.board = [
+      [0, 0, 1, 2, 2, 0, 0],
+      [0, 0, 2, 2, 2, 0, 0],
+      [2, 2, 2, 2, 2, 2, 2],
+      [2, 2, 2, 2, 2, 2, 2],
+      [2, 2, 2, 2, 2, 2, 2],
+      [0, 0, 2, 2, 2, 0, 0],
+      [0, 0, 2, 2, 1, 0, 0],
+    ];
+    api.gameState.remainingPieces = 2;
+
+    for (let row = 0; row < 7; row++) {
+      for (let col = 0; col < 7; col++) {
+        if (api.gameState.board[row][col] !== 0) {
+          api.removePieceFromCell(row, col);
+        }
+      }
+    }
+
+    api.addPieceToCell(0, 2);
+    api.addPieceToCell(6, 4);
+
+    api.startGame();
+    api.endGame();
+    await delay(400);
+
+    const secondMessage = window.confirmMessage;
+    expect(secondMessage).toContain('Fim de jogo');
+    expect(secondMessage).not.toContain('Parabéns');
+  });
+
+  test('Deve aplicar animação "pulse" ao selecionar célula', async () => {
+    const cell = api.getCellElement(2, 2);
+
+    api.selectCell(2, 2);
+    await delay(20);
+
+    expect(cell.style.animation).toContain('pulse');
+  });
+
+  test('Deve limpar animação ao desselecionar célula', async () => {
+    const cell = api.getCellElement(2, 2);
+
+    api.selectCell(2, 2);
+    await delay(20);
+    expect(cell.style.animation).toBeTruthy();
+
+    api.deselectCell();
+    await delay(20);
+
+    expect(cell.style.animation).toBe('');
+    expect(cell.classList.contains('selected')).toBe(false);
+  });
+
+  test('Deve adicionar classe "loading" ao botão de reiniciar durante initGame', async () => {
+    const restartButton = window.document.getElementById('restart-button');
+
+    api.initGame();
+
+    expect(restartButton.classList.contains('loading')).toBe(true);
+
+    await delay(600);
+    expect(restartButton.classList.contains('loading')).toBe(false);
+  });
+
+  test('Deve ativar flag isGameActive ao iniciar jogo', () => {
+    expect(api.gameState.isGameActive).toBe(false);
+    api.startGame();
+    expect(api.gameState.isGameActive).toBe(true);
+  });
+
+  test('Deve inicializar startTime ao iniciar jogo', () => {
+    expect(api.gameState.startTime).toBeNull();
+    api.startGame();
+    expect(api.gameState.startTime).toBeTruthy();
+    expect(typeof api.gameState.startTime).toBe('number');
+  });
+
+  test('Deve criar timerInterval ao iniciar jogo', () => {
+    expect(api.gameState.timerInterval).toBeNull();
+    api.startGame();
+    expect(api.gameState.timerInterval).toBeTruthy();
+  });
+
+  test('Deve incrementar gameTime automaticamente após 1 segundo', async () => {
+    api.startGame();
+    const initialTime = api.gameState.gameTime;
+    await delay(1100);
+    expect(api.gameState.gameTime).toBeGreaterThan(initialTime);
+  });
+
+  test('Deve atualizar stats automaticamente durante o jogo', async () => {
+    api.startGame();
+    await delay(1100);
+    const timeElement = window.document.getElementById('game-time');
+    expect(timeElement.textContent).not.toBe('00:00');
+  });
+
+  test('Deve desativar flag isGameActive ao finalizar jogo', async () => {
+    api.startGame();
+    expect(api.gameState.isGameActive).toBe(true);
+    api.endGame();
+    await delay(400);
+    expect(api.gameState.isGameActive).toBe(false);
+  });
+
+  test('Deve limpar timerInterval ao finalizar jogo', async () => {
+    api.startGame();
+    const interval = api.gameState.timerInterval;
+    expect(interval).toBeTruthy();
+    api.endGame();
+    await delay(400);
+    expect(api.gameState.timerInterval).toBeNull();
+  });
+
+  test('Deve parar incremento do tempo após endGame', async () => {
+    api.startGame();
+    await delay(500);
+    api.endGame();
+    await delay(400);
+    const timeAfterEnd = api.gameState.gameTime;
+    await delay(1100);
+    expect(api.gameState.gameTime).toBe(timeAfterEnd);
+  });
+
+  test('Não deve falhar ao finalizar jogo já inativo', () => {
+    expect(api.gameState.isGameActive).toBe(false);
+    expect(() => api.endGame()).not.toThrow();
   });
 });

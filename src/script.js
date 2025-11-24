@@ -19,9 +19,6 @@ document.addEventListener('DOMContentLoaded', () => {
     [0, 0, 1, 1, 1, 0, 0],
     [0, 0, 1, 1, 1, 0, 0],
   ];
-  // 0: célula inválida (não faz parte do tabuleiro, fora do formato do jogo)
-  // 1: célula válida com peça
-  // 2: célula válida sem peça (posição central começa vazia)
 
   const boardElement = document.getElementById('board');
   const restartButton = document.getElementById('restart-button');
@@ -33,46 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initGame();
 
   restartButton.addEventListener('click', initGame);
-
   document.addEventListener('keydown', handleKeyPress);
-
-  function handleKeyPress(event) {
-    if (!gameState.isGameActive && gameState.selectedCell === null) return;
-
-    switch (event.key) {
-      case 'Escape':
-        if (gameState.selectedCell) {
-          deselectCell();
-        }
-        break;
-      case 'r':
-      case 'R':
-        if (event.ctrlKey || event.metaKey) {
-          event.preventDefault();
-          initGame();
-        }
-        break;
-    }
-  }
-
-  function playSound(type) {
-    if (navigator.vibrate) {
-      switch (type) {
-        case 'select':
-          navigator.vibrate(50);
-          break;
-        case 'move':
-          navigator.vibrate([100, 50, 100]);
-          break;
-        case 'win':
-          navigator.vibrate([200, 100, 200, 100, 200]);
-          break;
-        case 'error':
-          navigator.vibrate(200);
-          break;
-      }
-    }
-  }
 
   const style = document.createElement('style');
   style.textContent = `
@@ -81,6 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
       50% { transform: scale(1.1); opacity: 0.8; }
       100% { transform: scale(1); opacity: 1; }
     }
+    @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
   `;
   document.head.appendChild(style);
 
@@ -105,9 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadBestScore();
     createBoard();
 
-    setTimeout(() => {
-      restartButton.classList.remove('loading');
-    }, 500);
+    setTimeout(() => restartButton.classList.remove('loading'), 500);
   }
 
   function createBoard() {
@@ -178,9 +135,7 @@ document.addEventListener('DOMContentLoaded', () => {
         );
 
         if (canMove) {
-          if (!gameState.isGameActive) {
-            startGame();
-          }
+          if (!gameState.isGameActive) startGame();
 
           movePiece(
             gameState.selectedCell.row,
@@ -190,17 +145,156 @@ document.addEventListener('DOMContentLoaded', () => {
           );
           deselectCell();
 
-          if (!hasValidMoves()) {
-            endGame();
-          }
-
           return;
         }
 
         deselectCell();
-        return;
       }
     }
+  }
+
+  function selectCell(row, col) {
+    gameState.selectedCell = { row, col };
+
+    const cell = getCellElement(row, col);
+    cell.classList.add('selected');
+    playSound('select');
+    cell.style.animation = 'none';
+
+    setTimeout(() => (cell.style.animation = 'pulse 2s infinite'), 10);
+  }
+
+  function deselectCell() {
+    if (!gameState.selectedCell) return;
+
+    const { row, col } = gameState.selectedCell;
+
+    const cell = getCellElement(row, col);
+    cell.classList.remove('selected');
+    cell.style.animation = '';
+    gameState.selectedCell = null;
+  }
+
+  function checkValidMove(fromRow, fromCol, toRow, toCol) {
+    if (!isValidPosition(fromRow, fromCol)) return false;
+    if (!isValidPosition(toRow, toCol)) return false;
+
+    const rowDiff = Math.abs(fromRow - toRow);
+    const colDiff = Math.abs(fromCol - toCol);
+
+    if ((rowDiff === 2 && colDiff === 0) || (rowDiff === 0 && colDiff === 2)) {
+      const middleRow = (fromRow + toRow) / 2;
+      const middleCol = (fromCol + toCol) / 2;
+      return gameState.board[middleRow][middleCol] === 1;
+    }
+
+    return false;
+  }
+
+  function movePiece(fromRow, fromCol, toRow, toCol) {
+    const middleRow = (fromRow + toRow) / 2;
+    const middleCol = (fromCol + toCol) / 2;
+
+    const fromCell = getCellElement(fromRow, fromCol);
+    const toCell = getCellElement(toRow, toCol);
+    const piece = fromCell.querySelector('.piece');
+
+    if (piece) {
+      piece.style.transition = 'transform 0.3s cubic-bezier(0.4,0,0.2,1)';
+      piece.style.transform = 'scale(1.2)';
+
+      setTimeout(() => {
+        gameState.board[fromRow][fromCol] = 2;
+        gameState.board[middleRow][middleCol] = 2;
+        gameState.board[toRow][toCol] = 1;
+
+        removePieceFromCell(fromRow, fromCol);
+        removePieceFromCell(middleRow, middleCol);
+        addPieceToCell(toRow, toCol);
+
+        gameState.remainingPieces--;
+        gameState.movesCount++;
+
+        updateGameStats();
+        playSound('move');
+
+        const newPiece = toCell.querySelector('.piece');
+
+        if (newPiece) {
+          newPiece.style.animation = 'bounceIn 0.5s ease-out';
+          setTimeout(() => (newPiece.style.animation = ''), 500);
+        }
+
+        checkGameOver();
+      }, 150);
+    } else {
+      gameState.board[fromRow][fromCol] = 2;
+      gameState.board[middleRow][middleCol] = 2;
+      gameState.board[toRow][toCol] = 1;
+
+      removePieceFromCell(fromRow, fromCol);
+      removePieceFromCell(middleRow, middleCol);
+      addPieceToCell(toRow, toCol);
+
+      gameState.remainingPieces--;
+      gameState.movesCount++;
+
+      updateGameStats();
+      playSound('move');
+
+      checkGameOver();
+    }
+  }
+
+  function removePieceFromCell(row, col) {
+    const cell = getCellElement(row, col);
+    const piece = cell.querySelector('.piece');
+
+    if (piece) cell.removeChild(piece);
+  }
+
+  function addPieceToCell(row, col) {
+    const cell = getCellElement(row, col);
+
+    if (!cell.querySelector('.piece')) {
+      const piece = document.createElement('div');
+      piece.className = 'piece';
+      cell.appendChild(piece);
+    }
+  }
+
+  function getCellElement(row, col) {
+    return document.querySelector(
+      `.cell[data-row="${row}"][data-col="${col}"]`
+    );
+  }
+
+  function updateGameStats() {
+    remainingPiecesElement.textContent = gameState.remainingPieces;
+    movesCountElement.textContent = gameState.movesCount;
+
+    const minutes = Math.floor(gameState.gameTime / 60);
+    const seconds = gameState.gameTime % 60;
+
+    gameTimeElement.textContent = `${minutes
+      .toString()
+      .padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  }
+
+  function startGame() {
+    gameState.isGameActive = true;
+    gameState.startTime = Date.now();
+    gameState.timerInterval = setInterval(() => {
+      gameState.gameTime = Math.floor(
+        (Date.now() - gameState.startTime) / 1000
+      );
+      updateGameStats();
+    }, 1000);
+  }
+
+  function checkGameOver() {
+    if (!gameState.isGameActive) return;
+    if (!hasValidMoves() || gameState.remainingPieces === 1) endGame();
   }
 
   function createCelebrationEffect() {
@@ -230,147 +324,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 6000);
   }
 
-  function selectCell(row, col) {
-    gameState.selectedCell = { row, col };
-
-    const cell = getCellElement(row, col);
-    cell.classList.add('selected');
-
-    playSound('select');
-    cell.style.animation = 'none';
-
-    setTimeout(() => {
-      cell.style.animation = 'pulse 2s infinite';
-    }, 10);
-  }
-
-  function deselectCell() {
-    if (gameState.selectedCell !== null) {
-      const { row, col } = gameState.selectedCell;
-
-      const cell = getCellElement(row, col);
-      cell.classList.remove('selected');
-      cell.style.animation = '';
-
-      gameState.selectedCell = null;
-    }
-  }
-
-  function checkValidMove(fromRow, fromCol, toRow, toCol) {
-    const rowDiff = Math.abs(fromRow - toRow);
-    const colDiff = Math.abs(fromCol - toCol);
-
-    if ((rowDiff === 2 && colDiff === 0) || (rowDiff === 0 && colDiff === 2)) {
-      const middleRow = (fromRow + toRow) / 2;
-      const middleCol = (fromCol + toCol) / 2;
-
-      return gameState.board[middleRow][middleCol] === 1;
-    }
-
-    return false;
-  }
-
-  function movePiece(fromRow, fromCol, toRow, toCol) {
-    const middleRow = (fromRow + toRow) / 2;
-    const middleCol = (fromCol + toCol) / 2;
-
-    const fromCell = getCellElement(fromRow, fromCol);
-    const toCell = getCellElement(toRow, toCol);
-    const piece = fromCell.querySelector('.piece');
-
-    if (piece) {
-      piece.style.transition = 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
-      piece.style.transform = 'scale(1.2)';
-
-      setTimeout(() => {
-        gameState.board[fromRow][fromCol] = 2;
-        gameState.board[middleRow][middleCol] = 2;
-        gameState.board[toRow][toCol] = 1;
-
-        removePieceFromCell(fromRow, fromCol);
-        removePieceFromCell(middleRow, middleCol);
-        addPieceToCell(toRow, toCol);
-
-        gameState.remainingPieces--;
-        gameState.movesCount++;
-        updateGameStats();
-
-        playSound('move');
-
-        const newPiece = toCell.querySelector('.piece');
-
-        if (newPiece) {
-          newPiece.style.animation = 'bounceIn 0.5s ease-out';
-
-          setTimeout(() => {
-            newPiece.style.animation = '';
-          }, 500);
-        }
-      }, 150);
-    } else {
-      gameState.board[fromRow][fromCol] = 2;
-      gameState.board[middleRow][middleCol] = 2;
-      gameState.board[toRow][toCol] = 1;
-
-      removePieceFromCell(fromRow, fromCol);
-      removePieceFromCell(middleRow, middleCol);
-      addPieceToCell(toRow, toCol);
-
-      gameState.remainingPieces--;
-      gameState.movesCount++;
-      updateGameStats();
-      playSound('move');
-    }
-  }
-
-  function removePieceFromCell(row, col) {
-    const cell = getCellElement(row, col);
-    const piece = cell.querySelector('.piece');
-
-    if (piece) {
-      cell.removeChild(piece);
-    }
-  }
-
-  function addPieceToCell(row, col) {
-    const cell = getCellElement(row, col);
-
-    if (!cell.querySelector('.piece')) {
-      const piece = document.createElement('div');
-      piece.className = 'piece';
-      cell.appendChild(piece);
-    }
-  }
-
-  function getCellElement(row, col) {
-    return document.querySelector(
-      `.cell[data-row="${row}"][data-col="${col}"]`
-    );
-  }
-
-  function updateGameStats() {
-    remainingPiecesElement.textContent = gameState.remainingPieces;
-    movesCountElement.textContent = gameState.movesCount;
-
-    const minutes = Math.floor(gameState.gameTime / 60);
-    const seconds = gameState.gameTime % 60;
-    gameTimeElement.textContent = `${minutes
-      .toString()
-      .padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-  }
-
-  function startGame() {
-    gameState.isGameActive = true;
-    gameState.startTime = Date.now();
-
-    gameState.timerInterval = setInterval(() => {
-      gameState.gameTime = Math.floor(
-        (Date.now() - gameState.startTime) / 1000
-      );
-      updateGameStats();
-    }, 1000);
-  }
-
   function endGame() {
     gameState.isGameActive = false;
 
@@ -384,38 +337,40 @@ document.addEventListener('DOMContentLoaded', () => {
     if (isVictory) {
       playSound('win');
       createCelebrationEffect();
-    }
 
-    const currentScore = gameState.remainingPieces;
-    const bestScore = localStorage.getItem('bestScore');
+      const bestTime = localStorage.getItem('bestTime');
 
-    if (!bestScore || currentScore < parseInt(bestScore)) {
-      localStorage.setItem('bestScore', currentScore.toString());
-      loadBestScore();
+      if (!bestTime || gameState.gameTime < parseInt(bestTime)) {
+        localStorage.setItem('bestTime', gameState.gameTime.toString());
+        loadBestScore();
 
-      if (bestScoreElement) {
-        bestScoreElement.style.animation = 'bounceIn 0.8s ease-out';
-
-        setTimeout(() => {
-          bestScoreElement.style.animation = '';
-        }, 800);
+        if (bestScoreElement) {
+          bestScoreElement.style.animation = 'bounceIn 0.8s ease-out';
+          setTimeout(() => (bestScoreElement.style.animation = ''), 800);
+        }
       }
     }
 
-    setTimeout(() => {
-      const message = isVictory
-        ? `Parabéns! Você venceu!\n\n⏱️ Tempo: ${gameTimeElement.textContent}\n🔄 Movimentos: ${gameState.movesCount}`
-        : `Fim de jogo!\n\n💎 Peças restantes: ${gameState.remainingPieces}\n⏱️ Tempo: ${gameTimeElement.textContent}\n🔄 Movimentos: ${gameState.movesCount}\n\nTente novamente para melhorar!`;
+    const message = isVictory
+      ? `Parabéns, você venceu!\n\n⏱️ Tempo: ${gameTimeElement.textContent}\n🔄 Movimentos: ${gameState.movesCount}`
+      : `Fim de jogo, você perdeu!\n\n💎 Peças restantes: ${gameState.remainingPieces}\n⏱️ Tempo: ${gameTimeElement.textContent}\n🔄 Movimentos: ${gameState.movesCount}`;
 
-      if (confirm(message + '\n\nDeseja jogar novamente?')) {
-        initGame();
-      }
-    }, 300);
+    if (confirm(message + '\n\nDeseja jogar novamente?')) initGame();
   }
 
   function loadBestScore() {
-    const bestScore = localStorage.getItem('bestScore');
-    bestScoreElement.textContent = bestScore ? bestScore : '--';
+    const bestTime = localStorage.getItem('bestTime');
+
+    if (bestTime) {
+      const minutes = Math.floor(bestTime / 60);
+      const seconds = bestTime % 60;
+
+      bestScoreElement.textContent = `${minutes
+        .toString()
+        .padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    } else {
+      bestScoreElement.textContent = '--';
+    }
   }
 
   function isValidPosition(row, col) {
@@ -433,10 +388,10 @@ document.addEventListener('DOMContentLoaded', () => {
       for (let col = 0; col < 7; col++) {
         if (gameState.board[row][col] === 1) {
           const directions = [
-            { deltaRow: -2, deltaCol: 0 }, // Cima
-            { deltaRow: 2, deltaCol: 0 }, // Baixo
-            { deltaRow: 0, deltaCol: -2 }, // Esquerda
-            { deltaRow: 0, deltaCol: 2 }, // Direita
+            { deltaRow: -2, deltaCol: 0 },
+            { deltaRow: 2, deltaCol: 0 },
+            { deltaRow: 0, deltaCol: -2 },
+            { deltaRow: 0, deltaCol: 2 },
           ];
 
           for (const dir of directions) {
@@ -449,14 +404,48 @@ document.addEventListener('DOMContentLoaded', () => {
               gameState.board[row + dir.deltaRow / 2][
                 col + dir.deltaCol / 2
               ] === 1
-            ) {
+            )
               return true;
-            }
           }
         }
       }
     }
-
     return false;
+  }
+
+  function handleKeyPress(event) {
+    if (!gameState.isGameActive && gameState.selectedCell === null) return;
+
+    switch (event.key) {
+      case 'Escape':
+        if (gameState.selectedCell) deselectCell();
+        break;
+      case 'r':
+      case 'R':
+        if (event.ctrlKey || event.metaKey) {
+          event.preventDefault();
+          initGame();
+        }
+        break;
+    }
+  }
+
+  function playSound(type) {
+    if (!navigator.vibrate) return;
+
+    switch (type) {
+      case 'select':
+        navigator.vibrate(50);
+        break;
+      case 'move':
+        navigator.vibrate([100, 50, 100]);
+        break;
+      case 'win':
+        navigator.vibrate([200, 100, 200, 100, 200]);
+        break;
+      case 'error':
+        navigator.vibrate(200);
+        break;
+    }
   }
 });
