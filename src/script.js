@@ -332,6 +332,8 @@ document.addEventListener('DOMContentLoaded', () => {
       gameState.timerInterval = null;
     }
 
+    updateGameStats();
+
     const isVictory = gameState.remainingPieces === 1;
 
     if (isVictory) {
@@ -355,7 +357,9 @@ document.addEventListener('DOMContentLoaded', () => {
       ? `Parabéns, você venceu!\n\n⏱️ Tempo: ${gameTimeElement.textContent}\n🔄 Movimentos: ${gameState.movesCount}`
       : `Fim de jogo, você perdeu!\n\n💎 Peças restantes: ${gameState.remainingPieces}\n⏱️ Tempo: ${gameTimeElement.textContent}\n🔄 Movimentos: ${gameState.movesCount}`;
 
-    if (confirm(message + '\n\nDeseja jogar novamente?')) initGame();
+    setTimeout(() => {
+      if (confirm(message + '\n\nDeseja jogar novamente?')) initGame();
+    }, 100);
   }
 
   function loadBestScore() {
